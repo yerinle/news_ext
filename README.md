@@ -42,6 +42,41 @@ exactly where it is. A wrong guess costs you one ⌘-Tab back to the browser, ne
 
 ## Install
 
+Two routes. Building from source is the better one — it signs with your own Apple Development
+identity, which is what makes Safari keep the extension enabled — but there are
+[pre-built downloads](#pre-built-downloads) if you would rather not install Xcode.
+
+### Pre-built downloads
+
+Every tagged release on the [Releases page](../../releases) carries a Chrome tarball, a Safari app
+zip, and `checksums.txt`. They are built by GitHub Actions, which has no Apple identity, so they are
+**ad-hoc signed and not notarized** — macOS treats them as unidentified software.
+
+**Chrome.** Unpack with `tar` rather than double-clicking; Archive Utility quarantines what it
+extracts, and Chrome refuses to launch a quarantined native host.
+
+```sh
+tar -xzf OpenInNews-chrome-<version>.tar.gz
+cd OpenInNews-chrome-<version>
+./install.sh          # installs and registers the native helper
+```
+
+Then load the `extension` folder at `chrome://extensions` with Developer mode on, and leave the
+folder where it is — Chrome reloads it from that path every launch.
+
+**Safari.**
+
+```sh
+unzip OpenInNews-safari-<version>.zip
+xattr -dr com.apple.quarantine "Open in News.app"
+mv "Open in News.app" /Applications/
+```
+
+Then follow the Safari steps below. One catch: an app without a Developer ID signature only keeps
+its extension enabled while Safari's **Develop → Allow Unsigned Extensions** is ticked, and that
+resets on every Safari restart. If that gets old, build from source instead — that is the whole
+difference.
+
 ### Safari (macOS)
 
 ```sh
@@ -128,12 +163,26 @@ extension/        Shared web extension source (MV3) for both browsers
 chrome/host/      Swift native messaging host + CLI
 safari/           Generated Xcode project; the native handler lives in
                   "Open in News Extension/SafariWebExtensionHandler.swift"
-scripts/          stage.sh, build-safari.sh, build-chrome.sh, make_icons.py
+scripts/          stage.sh, build-safari.sh, build-chrome.sh, install-host.sh,
+                  package-release.sh, make_icons.py
 docs/ios.md       Evidence for why iOS cannot be supported
 ```
 
 `scripts/stage.sh <safari|chrome>` copies the shared source into `build/<target>/extension` with the
 right manifest and native-helper ID baked in. Re-run it after editing anything in `extension/`.
+
+## Releasing
+
+```sh
+./scripts/package-release.sh            # artifacts in build/release/
+git tag v1.1 && git push origin v1.1    # Actions builds and publishes the same ones
+```
+
+`.github/workflows/release.yml` runs the same script on a tag push and attaches the artifacts to a
+GitHub release; `workflow_dispatch` builds them without publishing, for a dry run. Run the script
+locally instead and the artifacts pick up whatever signing identity your keychain has
+(`CODESIGN_IDENTITY` for the host, `CODESIGN_TEAM` for the app), which the CI ones cannot — so a
+locally built pair is worth uploading over them if you have a Developer ID.
 
 ## Known limitations
 

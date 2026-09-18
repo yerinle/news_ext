@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 1.0). Builds artifacts without publishing a release.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          version="${{ github.event.inputs.version }}"
+          [ -n "$version" ] || version="${GITHUB_REF_NAME#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: ./scripts/package-release.sh "${{ steps.version.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenInNews-${{ steps.version.outputs.version }}
+          path: |
+            build/release/*.tar.gz
+            build/release/*.zip
+            build/release/checksums.txt
+
+      # Tag pushes publish; workflow_dispatch just leaves the artifacts above,
+      # which is the way to smoke-test a build before tagging.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cat > /tmp/notes.md <<'NOTES'
+          Pre-built downloads for macOS. Building from source is still the
+          supported path — see the README — but these save you the Xcode step.
+
+          Both are **ad-hoc signed, not notarized**: GitHub's runners have no
+          Apple identity. macOS will treat them as unidentified software, so
+          follow the steps below rather than double-clicking.
+
+          ### Chrome
+
+          ```sh
+          tar -xzf OpenInNews-chrome-VERSION.tar.gz
+          cd OpenInNews-chrome-VERSION
+          ./install.sh
+          ```
+
+          Then load the `extension` folder at `chrome://extensions` with
+          Developer mode on. Unpack with `tar`, not by double-clicking —
+          Archive Utility quarantines the helper and Chrome then refuses to
+          launch it.
+
+          ### Safari
+
+          ```sh
+          unzip OpenInNews-safari-VERSION.zip
+          xattr -dr com.apple.quarantine "Open in News.app"
+          mv "Open in News.app" /Applications/
+          ```
+
+          Because the app is not signed with a Developer ID, Safari only keeps
+          the extension enabled while **Develop → Allow Unsigned Extensions**
+          is on, and that setting resets every time Safari restarts. If that
+          annoys you, build from source with `./scripts/build-safari.sh`, which
+          signs with your own Apple Development identity and sticks.
+
+          Verify what you downloaded against `checksums.txt`.
+          NOTES
+          sed -i '' "s/VERSION/$VERSION/g" /tmp/notes.md
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/notes.md \
+            build/release/*.tar.gz build/release/*.zip build/release/checksums.txt

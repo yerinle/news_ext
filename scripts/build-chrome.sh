@@ -9,8 +9,6 @@
 set -euo pipefail
 
 ROOT="${0:A:h}/.."
-HOST_NAME="com.yinka.newsopen"
-EXT_ID="$(cat "$ROOT/chrome/extension_id.txt")"
 INSTALL_DIR="$HOME/Library/Application Support/NewsOpen"
 BIN="$INSTALL_DIR/newsopen-host"
 IDENTITY="${CODESIGN_IDENTITY:-}"
@@ -27,37 +25,10 @@ fi
 if [[ -n "$IDENTITY" ]]; then
   codesign --force --sign "$IDENTITY" --timestamp=none "$BIN"
   echo "Signed host with: $IDENTITY"
-else
-  codesign --force --sign - "$BIN"
-  echo "No Developer ID found; ad-hoc signed the host."
 fi
 
-# Register the host with every Chromium-family browser present.
-for profile in \
-  "$HOME/Library/Application Support/Google/Chrome" \
-  "$HOME/Library/Application Support/Google/Chrome Canary" \
-  "$HOME/Library/Application Support/Microsoft Edge" \
-  "$HOME/Library/Application Support/BraveSoftware/Brave-Browser" \
-  "$HOME/Library/Application Support/Vivaldi" \
-  "$HOME/Library/Application Support/Arc"
-do
-  [[ -d "$profile" ]] || continue
-  dir="$profile/NativeMessagingHosts"
-  mkdir -p "$dir"
-  cat > "$dir/$HOST_NAME.json" <<JSON
-{
-  "name": "$HOST_NAME",
-  "description": "Hands article URLs to the macOS Open in News share service",
-  "path": "$BIN",
-  "type": "stdio",
-  "allowed_origins": [ "chrome-extension://$EXT_ID/" ]
-}
-JSON
-  echo "Registered host in: ${profile:t}"
-done
+# Registers the host with every Chromium-family browser present, and ad-hoc
+# signs it if the step above found no identity.
+"$ROOT/scripts/install-host.sh" "$BIN"
 
-echo
-echo "Done."
-echo "  Extension ID : $EXT_ID"
-echo "  Host binary  : $BIN"
 echo "  Load unpacked: $ROOT/build/chrome/extension"
