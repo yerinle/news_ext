@@ -42,18 +42,16 @@ exactly where it is. A wrong guess costs you one ⌘-Tab back to the browser, ne
 
 ## Install
 
-Two routes. Building from source is the better one — it signs with your own Apple Development
-identity, which is what makes Safari keep the extension enabled — but there are
-[pre-built downloads](#pre-built-downloads) if you would rather not install Xcode.
+Two routes: take a [pre-built download](#pre-built-downloads), or build from source if you would
+rather compile it yourself.
 
 ### Pre-built downloads
 
-Every tagged release on the [Releases page](../../releases) carries a Chrome tarball, a Safari app
-zip, and `checksums.txt`. They are built by GitHub Actions, which has no Apple identity, so they are
-**ad-hoc signed and not notarized** — macOS treats them as unidentified software.
+Every release on the [Releases page](../../releases) carries a Chrome tarball, a Safari app zip and
+`checksums.txt`, signed with a Developer ID certificate and notarized by Apple, so macOS opens them
+without a detour through Gatekeeper.
 
-**Chrome.** Unpack with `tar` rather than double-clicking; Archive Utility quarantines what it
-extracts, and Chrome refuses to launch a quarantined native host.
+**Chrome.**
 
 ```sh
 tar -xzf OpenInNews-chrome-<version>.tar.gz
@@ -68,14 +66,10 @@ folder where it is — Chrome reloads it from that path every launch.
 
 ```sh
 unzip OpenInNews-safari-<version>.zip
-xattr -dr com.apple.quarantine "Open in News.app"
 mv "Open in News.app" /Applications/
 ```
 
-Then follow the Safari steps below. One catch: an app without a Developer ID signature only keeps
-its extension enabled while Safari's **Develop → Allow Unsigned Extensions** is ticked, and that
-resets on every Safari restart. If that gets old, build from source instead — that is the whole
-difference.
+Then follow the Safari steps below.
 
 ### Safari (macOS)
 
@@ -173,16 +167,45 @@ right manifest and native-helper ID baked in. Re-run it after editing anything i
 
 ## Releasing
 
+A tag gets you a **draft** release, because a hosted runner cannot sign anything (see below). The
+assets it attaches are placeholders; replace them with locally signed ones before publishing:
+
 ```sh
-./scripts/package-release.sh            # artifacts in build/release/
-git tag v1.1 && git push origin v1.1    # Actions builds and publishes the same ones
+git tag v1.1 && git push origin v1.1    # Actions builds and drafts the release
+
+NOTARY_PROFILE=NewsOpen ./scripts/package-release.sh 1.1
+gh release upload v1.1 --clobber build/release/OpenInNews-*.tar.gz \
+  build/release/OpenInNews-*.zip build/release/checksums.txt
+gh release edit v1.1 --draft=false
 ```
 
-`.github/workflows/release.yml` runs the same script on a tag push and attaches the artifacts to a
-GitHub release; `workflow_dispatch` builds them without publishing, for a dry run. Run the script
-locally instead and the artifacts pick up whatever signing identity your keychain has
-(`CODESIGN_IDENTITY` for the host, `CODESIGN_TEAM` for the app), which the CI ones cannot — so a
-locally built pair is worth uploading over them if you have a Developer ID.
+`workflow_dispatch` builds the artifacts without creating a release at all, for a dry run.
+
+### Signing
+
+A hosted runner has an empty keychain, so anything CI builds is ad-hoc signed and not notarized.
+For downloads other people can open without argument, build locally with a **Developer ID
+Application** certificate — the only kind Gatekeeper honours on someone else's Mac. `Apple
+Development` is not a substitute: it works on the machine that built the app and nowhere else.
+
+With such a certificate in the keychain, `package-release.sh` finds it by itself, signs the host
+with the hardened runtime and a secure timestamp, and exports the app through an archive with the
+`developer-id` method — a plain `xcodebuild build` picks the development certificate no matter what
+else is available, which is the trap to avoid.
+
+Signing alone is still not enough: since macOS 10.15 a downloaded app must also be notarized. Store
+credentials once, then point the script at them:
+
+```sh
+xcrun notarytool store-credentials NewsOpen \
+  --apple-id you@example.com --team-id TEAMID --password <app-specific-password>
+
+NOTARY_PROFILE=NewsOpen ./scripts/package-release.sh
+```
+
+That submits both artifacts and staples the ticket to the app. Without `NOTARY_PROFILE` the script
+signs and skips notarizing, and says so. `DEVELOPER_ID`, `CODESIGN_IDENTITY` and `CODESIGN_TEAM`
+override the automatic choices.
 
 ## Known limitations
 

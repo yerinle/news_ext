@@ -42,6 +42,41 @@ VERSION="${VERSION#v}"
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
+# A Developer ID certificate is the only one Gatekeeper accepts on someone
+# else's Mac; Apple Development is for this machine only. Fall back to it, then
+# to ad-hoc, so the script still produces something without any certificate.
+DEV_ID="${DEVELOPER_ID:-}"
+if [[ -z "$DEV_ID" ]]; then
+  DEV_ID="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+fi
+IDENTITY="${CODESIGN_IDENTITY:-}"
+if [[ -z "$IDENTITY" && -z "$DEV_ID" ]]; then
+  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/{print $2; exit}')"
+fi
+
+# Signing is only half of it: since macOS 10.15 a downloaded app must also be
+# notarized, or Gatekeeper still refuses it. Set NOTARY_PROFILE to a profile
+# stored with `xcrun notarytool store-credentials` to run that step.
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+
+notarize() {
+  local target="$1"
+  if [[ -z "$NOTARY_PROFILE" ]]; then
+    echo "NOTARY_PROFILE unset; skipping notarization of ${target:t}."
+    return
+  fi
+  local zip="$OUT/${target:t}-notarize.zip"
+  ditto -c -k --keepParent "$target" "$zip"
+  echo "Notarizing ${target:t}…"
+  xcrun notarytool submit "$zip" --keychain-profile "$NOTARY_PROFILE" --wait
+  rm -f "$zip"
+  # A ticket can only be stapled to a bundle, disk image or installer. A loose
+  # executable relies on Gatekeeper's online check instead.
+  if [[ -d "$target" ]]; then
+    xcrun stapler staple "$target"
+  fi
+}
+
 # ---------------------------------------------------------------- chrome
 
 "$ROOT/scripts/stage.sh" chrome
@@ -64,11 +99,13 @@ lipo -create "$OUT/newsopen-host-arm64" "$OUT/newsopen-host-x86_64" \
   -output "$STAGE/newsopen-host"
 rm -f "$OUT/newsopen-host-arm64" "$OUT/newsopen-host-x86_64"
 
-IDENTITY="${CODESIGN_IDENTITY:-}"
-if [[ -z "$IDENTITY" ]]; then
-  IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Developer ID Application|Apple Development/{print $2; exit}')"
-fi
-if [[ -n "$IDENTITY" ]]; then
+if [[ -n "$DEV_ID" ]]; then
+  # Hardened runtime and a secure timestamp are both preconditions for
+  # notarization, so a Developer ID signature has to carry them.
+  codesign --force --sign "$DEV_ID" --options runtime --timestamp "$STAGE/newsopen-host"
+  echo "Signed host with: $DEV_ID"
+  notarize "$STAGE/newsopen-host"
+elif [[ -n "$IDENTITY" ]]; then
   codesign --force --sign "$IDENTITY" --timestamp=none "$STAGE/newsopen-host"
   echo "Signed host with: $IDENTITY"
 else
@@ -123,6 +160,47 @@ else
 
   PRODUCTS="$OUT/safari-products"
   TEAM="${CODESIGN_TEAM:-}"
+  # The team is the OU of the signing certificate's subject.
+  if [[ -z "$TEAM" && -n "$DEV_ID" ]]; then
+    TEAM="${${DEV_ID##*\(}%\)}"
+  fi
+
+  if [[ -n "$DEV_ID" ]]; then
+    # Developer ID distribution needs an archive export, not a plain build:
+    # `xcodebuild build` signs with the development certificate whatever else
+    # is in the keychain, which Gatekeeper rejects on another Mac.
+    echo "Archiving Safari app for Developer ID (team: $TEAM)…"
+    ARCHIVE="$OUT/OpenInNews.xcarchive"
+    xcodebuild -project "$ROOT/safari/Open in News/Open in News.xcodeproj" \
+      -scheme "Open in News" -configuration Release \
+      -archivePath "$ARCHIVE" \
+      OBJROOT="$OUT/safari-intermediates" \
+      ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+      DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates \
+      archive 2>&1 | grep -E 'error:|ARCHIVE (SUCCEEDED|FAILED)'
+
+    cat > "$OUT/export.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key><string>developer-id</string>
+  <key>teamID</key><string>$TEAM</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>destination</key><string>export</string>
+</dict>
+</plist>
+PLIST
+
+    mkdir -p "$PRODUCTS/Release"
+    xcodebuild -exportArchive -archivePath "$ARCHIVE" \
+      -exportPath "$PRODUCTS/Release" \
+      -exportOptionsPlist "$OUT/export.plist" \
+      -allowProvisioningUpdates 2>&1 | grep -E 'error:|EXPORT (SUCCEEDED|FAILED)'
+    rm -rf "$ARCHIVE" "$OUT/export.plist"
+
+    notarize "$PRODUCTS/Release/Open in News.app"
+  else
   # Universal, like the host: one download for Apple silicon and Intel.
   echo "Building Safari app (team: ${TEAM:-none, ad-hoc})…"
   if [[ -n "$TEAM" ]]; then
@@ -141,12 +219,14 @@ else
       build 2>&1 | grep -E 'error:|BUILD (SUCCEEDED|FAILED)'
   fi
 
+  fi
+
   APP="$PRODUCTS/Release/Open in News.app"
 
   # Without a team, xcodebuild leaves only the linker's ad-hoc signature on the
   # executables and nothing on the bundle. Seal the bundle so the app at least
   # launches once the user clears quarantine.
-  if [[ -z "$TEAM" ]]; then
+  if [[ -z "$TEAM" && -z "$DEV_ID" ]]; then
     codesign --force --deep --sign - "$APP"
     echo "Ad-hoc signed the app bundle."
   fi

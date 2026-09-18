@@ -44,21 +44,19 @@ jobs:
             build/release/*.zip
             build/release/checksums.txt
 
-      # Tag pushes publish; workflow_dispatch just leaves the artifacts above,
-      # which is the way to smoke-test a build before tagging.
-      - name: Publish release
+      # A tag creates a DRAFT. Runner-built assets are ad-hoc signed and not
+      # notarized, so they are a placeholder: replace them with locally signed
+      # ones (see the README) before publishing the draft.
+      - name: Create draft release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           cat > /tmp/notes.md <<'NOTES'
-          Pre-built downloads for macOS. Building from source is still the
-          supported path — see the README — but these save you the Xcode step.
-
-          Both are **ad-hoc signed, not notarized**: GitHub's runners have no
-          Apple identity. macOS will treat them as unidentified software, so
-          follow the steps below rather than double-clicking.
+          Pre-built downloads for macOS, signed with a Developer ID certificate
+          and notarized by Apple. Building from source works too — see the
+          README — but these save you the Xcode step.
 
           ### Chrome
 
@@ -69,28 +67,44 @@ jobs:
           ```
 
           Then load the `extension` folder at `chrome://extensions` with
-          Developer mode on. Unpack with `tar`, not by double-clicking —
-          Archive Utility quarantines the helper and Chrome then refuses to
-          launch it.
+          Developer mode on, and leave the folder where it is — Chrome reloads
+          it from that path every launch.
 
           ### Safari
 
           ```sh
           unzip OpenInNews-safari-VERSION.zip
-          xattr -dr com.apple.quarantine "Open in News.app"
           mv "Open in News.app" /Applications/
           ```
 
-          Because the app is not signed with a Developer ID, Safari only keeps
-          the extension enabled while **Develop → Allow Unsigned Extensions**
-          is on, and that setting resets every time Safari restarts. If that
-          annoys you, build from source with `./scripts/build-safari.sh`, which
-          signs with your own Apple Development identity and sticks.
+          Launch it, click **Quit and Open Safari Extensions Preferences…**,
+          tick **Open in Apple News**, and set its site access to **Allow on
+          Every Website**.
 
           Verify what you downloaded against `checksums.txt`.
           NOTES
           sed -i '' "s/VERSION/$VERSION/g" /tmp/notes.md
           gh release create "$GITHUB_REF_NAME" \
+            --draft \
             --title "$GITHUB_REF_NAME" \
             --notes-file /tmp/notes.md \
             build/release/*.tar.gz build/release/*.zip build/release/checksums.txt
+
+      - name: Remind to replace assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "### Draft release created"
+            echo
+            echo "Its assets are **ad-hoc signed and not notarized** — a hosted"
+            echo "runner has no Apple certificate. Replace them before publishing:"
+            echo
+            echo '```sh'
+            echo "NOTARY_PROFILE=NewsOpen ./scripts/package-release.sh $VERSION"
+            echo "gh release upload $GITHUB_REF_NAME --clobber build/release/OpenInNews-*.tar.gz \\"
+            echo "  build/release/OpenInNews-*.zip build/release/checksums.txt"
+            echo "gh release edit $GITHUB_REF_NAME --draft=false"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
