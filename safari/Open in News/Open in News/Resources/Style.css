@@ -21,8 +21,13 @@ body {
     flex-direction: column;
 
     gap: var(--spacing);
-    margin: 0 calc(var(--spacing) * 2);
-    height: 100%;
+    margin: 0;
+    padding: calc(var(--spacing) * 2);
+    /* min-height, not height: with a fixed height, content taller than the
+       window is centred and so clipped at both ends, which put the button out
+       of reach. This lets the body grow and scroll instead. */
+    min-height: 100%;
+    box-sizing: border-box;
 
     font: -apple-system-short-body;
     text-align: center;

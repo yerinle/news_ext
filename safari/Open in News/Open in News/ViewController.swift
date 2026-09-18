@@ -33,12 +33,35 @@ class ViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHan
             }
 
             DispatchQueue.main.async {
-                if #available(macOS 13, *) {
-                    webView.evaluateJavaScript("show(\(state.isEnabled), true)")
-                } else {
-                    webView.evaluateJavaScript("show(\(state.isEnabled), false)")
+                var useSettings = false
+                if #available(macOS 13, *) { useSettings = true }
+                webView.evaluateJavaScript("show(\(state.isEnabled), \(useSettings))") { _, _ in
+                    self.fitWindowToContent()
                 }
             }
+        }
+    }
+
+    /// Grow the window to whatever the page actually renders. The body text
+    /// changes with the extension's state and with Safari's naming ("Settings"
+    /// on macOS 13+, "Preferences" before), and a fixed window sized for one
+    /// wording leaves the button below the fold on another — unreachable,
+    /// because the window is not scrolled to it.
+    private func fitWindowToContent() {
+        webView.evaluateJavaScript("document.documentElement.scrollHeight") { [weak self] result, _ in
+            guard let self,
+                  let height = (result as? NSNumber)?.doubleValue,
+                  let window = self.view.window else { return }
+
+            var size = window.contentLayoutRect.size
+            guard height > size.height else { return }
+            size.height = CGFloat(height)
+
+            // Keep the title bar where it is rather than letting the window
+            // grow downwards off the bottom of the screen.
+            let top = window.frame.maxY
+            window.setContentSize(size)
+            window.setFrameTopLeftPoint(NSPoint(x: window.frame.origin.x, y: top))
         }
     }
 
