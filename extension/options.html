@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open in Apple News — Publishers</title>
+<style>
+  :root { color-scheme: light dark; font: 14px -apple-system, system-ui, sans-serif; }
+  body { margin: 0 auto; padding: 28px; max-width: 640px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.lede { margin: 0 0 22px; color: color-mix(in srgb, currentColor 60%, transparent); }
+  .add { display: flex; gap: 8px; margin-bottom: 18px; }
+  .add input { flex: 1; padding: 7px 9px; font: inherit; border-radius: 7px;
+               border: 1px solid color-mix(in srgb, currentColor 25%, transparent); background: transparent; color: inherit; }
+  button { padding: 7px 13px; font: inherit; border-radius: 7px; cursor: pointer;
+           border: 1px solid color-mix(in srgb, currentColor 25%, transparent); background: transparent; color: inherit; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; align-items: center; gap: 10px; padding: 7px 2px;
+       border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+  li .name { flex: 1; }
+  li .badge { font-size: 11px; padding: 2px 7px; border-radius: 20px;
+              background: color-mix(in srgb, currentColor 12%, transparent); }
+  .off { opacity: .45; }
+  footer { margin-top: 26px; font-size: 12.5px; color: color-mix(in srgb, currentColor 55%, transparent); }
+</style>
+</head>
+<body>
+  <h1>Publishers</h1>
+  <p class="lede">Articles from these sites open in Apple News automatically. Sites you add or turn off are remembered; the rest come from the built-in Apple&nbsp;News+ list.</p>
+
+  <div class="add">
+    <input id="newDomain" type="text" placeholder="example.com" spellcheck="false" autocapitalize="off">
+    <button id="add">Add</button>
+  </div>
+
+  <ul id="list"></ul>
+
+  <footer>
+    A site that is not in Apple&nbsp;News+ will simply open News on the Today screen — your browser tab is never closed, so nothing is lost.
+  </footer>
+
+  <script src="publishers.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

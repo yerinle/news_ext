@@ -1,0 +1,25 @@
+# Build output
+build/
+DerivedData/
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# Xcode
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Signing material — never commit a private key
+*.pem
+*.p12
+*.mobileprovision

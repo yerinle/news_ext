@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage extensions
+        run: |
+          ./scripts/stage.sh safari
+          ./scripts/stage.sh chrome
+
+      - name: Validate manifests
+        run: |
+          for m in build/safari/extension/manifest.json build/chrome/extension/manifest.json; do
+            python3 -c "import json,sys; json.load(open('$m')); print('ok: $m')"
+          done
+
+      - name: Syntax-check extension JavaScript
+        run: |
+          for f in extension/background.js extension/popup.js extension/options.js extension/publishers.js; do
+            node --check "$f"
+          done
+
+      - name: Build native messaging host
+        run: xcrun swiftc -O chrome/host/newsopen-host.swift -o /tmp/newsopen-host
+
+      - name: Build Safari app
+        run: |
+          xcodebuild \
+            -project "safari/Open in News/Open in News.xcodeproj" \
+            -target "Open in News" \
+            -configuration Release \
+            SYMROOT=/tmp/products OBJROOT=/tmp/intermediates \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            build

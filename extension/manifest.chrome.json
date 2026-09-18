@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Open in Apple News",
+  "version": "1.0",
+  "description": "Opens Apple News+ publisher articles in the News app instead of leaving you at a paywall.",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "96": "icons/icon-96.png",
+    "128": "icons/icon-128.png",
+    "256": "icons/icon-256.png",
+    "512": "icons/icon-512.png"
+  },
+  "permissions": [
+    "webNavigation",
+    "storage",
+    "nativeMessaging",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy+aGZr3+GfDivzT9OiOkNO2zoOC9eJos4Zd+5Gy9hBBxH9tU/Rl0ZzB91J4hbaitrLcclAqJBvHGW1opGnSuYdrRRYAFgMJbE7zLTrubUC2YpSxjQe8eUp2qjUcBAceBMEUS6NzKk8PbaQQvrEbq852Dd6dYhtwoYoecRAkLZJC6WG50k1/yekWB46ZavtghQfIjk3GGusp7agc2gB+zdfsS3ZjTG+4g/f26dH3/AbBsQuJ7/sPiIDWaig9dwkcCYMPoDJ2r58tawRJWGljZPjvGx44SmdIl8nQ9q4NMfY5B5RidZls30llPnjs1L5V/ZJCgTKijpiHmzKLO2OMikwIDAQAB"
+}
