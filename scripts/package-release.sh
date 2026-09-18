@@ -234,6 +234,13 @@ PLIST
   # ditto, not zip: it is the only archiver that keeps an .app's symlinks and
   # signature intact.
   ditto -c -k --keepParent "$APP" "$OUT/OpenInNews-safari-$VERSION.zip"
+
+  # Xcode registers whatever it builds with LaunchServices, and Safari then
+  # lists this copy as a second, identical extension alongside the installed
+  # one. Drop it before the directory goes.
+  LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+  "$LSREGISTER" -u "$APP" 2>/dev/null || true
+
   rm -rf "$PRODUCTS" "$OUT/safari-intermediates"
   echo "Packaged: OpenInNews-safari-$VERSION.zip"
 fi
