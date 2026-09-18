@@ -12,6 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The project is authored in a newer Xcode than the runner default, and
+      # xcodebuild refuses a project format it does not know. Taking the newest
+      # installed keeps that failure one Xcode release further away.
+      - name: Select newest Xcode
+        run: |
+          newest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
+
       - name: Stage extensions
         run: |
           ./scripts/stage.sh safari
@@ -29,15 +38,16 @@ jobs:
             node --check "$f"
           done
 
-      - name: Build native messaging host
-        run: xcrun swiftc -O chrome/host/newsopen-host.swift -o /tmp/newsopen-host
+      # Builds the host and the Safari app by the same path a release uses, so a
+      # break in packaging shows up here rather than at tag time.
+      - name: Package release artifacts
+        run: ./scripts/package-release.sh
 
-      - name: Build Safari app
+      - name: Check artifacts are universal
         run: |
-          xcodebuild \
-            -project "safari/Open in News/Open in News.xcodeproj" \
-            -target "Open in News" \
-            -configuration Release \
-            SYMROOT=/tmp/products OBJROOT=/tmp/intermediates \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
-            build
+          set -euo pipefail
+          tar -xzf build/release/OpenInNews-chrome-*.tar.gz -C build/release
+          for b in build/release/OpenInNews-chrome-*/newsopen-host; do
+            lipo -info "$b" | grep -q 'x86_64 arm64' || { lipo -info "$b"; exit 1; }
+          done
+          echo "ok: host is universal"
